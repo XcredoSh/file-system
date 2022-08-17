@@ -1,21 +1,32 @@
 <?php
 
-namespace App\Http\Controllers\Api\User;
+namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\User;
 use App\Models\Files;
+use App\Models\User;
 
-class UserFileController extends Controller
+class MainController extends Controller
 {
-
     public $successStatus = 200;
     public $createdStatus = 201;
     public $acceptedStatus = 202;
     public $badRequestStatus = 400;
     public $unauthorized = 401;
     public $notFound = 404;
+
+
+    function __construct()
+    {
+         $this->middleware('can:add file', ['only' => ['store']]);
+         $this->middleware('can:show file', ['only' => ['index','show']]);
+         $this->middleware('can:delete file', ['only' => ['destroy']]);
+        //  $this->middleware('can:permission create', ['only' => ['create','store']]);
+        //  $this->middleware('can:permission edit', ['only' => ['edit','update']]);
+        //  $this->middleware('can:permission delete', ['only' => ['destroy']]);
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -23,7 +34,16 @@ class UserFileController extends Controller
      */
     public function index()
     {
-        $files = User::find(auth()->user()->id)->files;
+        $files = null;
+        $role_name = auth()->user()->getRoleNames()[0];
+      
+        if($role_name === 'moderator')
+        {
+            $files = Files::where('user_id', '!=', 1)->get();
+        }else {
+            $files = User::find(auth()->user()->id)->files;
+        }
+
         return response()->json(
             [
                 'files' => $files
@@ -39,7 +59,6 @@ class UserFileController extends Controller
      */
     public function store(Request $request)
     {
-
         $this->validate($request, [
             'file' => 'required|mimes:pdf,xlx,docx|max:2048',
         ]);
@@ -103,7 +122,24 @@ class UserFileController extends Controller
      */
     public function show($id)
     {
-        //
+
+        $file = Files::where('id', $id)->first();
+        $role_name = auth()->user()->getRoleNames()[0];
+        
+
+        if($file->parent_id != null)
+        {
+            $parent_file = Files::where('id', $file->parent_id)->select('path', 'file_name as original_name', 'hash_name', 'ext')->get();
+            $file['parent_file'] = $parent_file;
+        }
+        
+        return response()->json(
+            [
+                'success' => true,
+                'code' => '200',
+                'file' => $file
+                ],
+             $this->successStatus);
     }
 
     /**
@@ -126,6 +162,23 @@ class UserFileController extends Controller
      */
     public function destroy($id)
     {
-        //
+        $role_name = auth()->user()->getRoleNames()[0];
+        if($role_name === 'moderator')
+        {
+            $file = Files::where('id', $id)->first();
+            if($file->user_id === 1){
+                return response()->json(
+                    [
+                        'message' => 'Files deleted error'
+                    ]
+                );
+            }
+        }
+        Files::destroy($id);
+        return response()->json(
+            [
+                'message' => 'Files deleted  successfully'
+            ]
+        );
     }
 }
